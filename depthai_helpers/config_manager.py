@@ -365,7 +365,10 @@ class BlobManager:
         self.NCE_nr = NCE_nr
 
         if self.args['cnn_model']:
+            print('-------------------')
+            print(self.args['cnn_model'])
             self.blob_file, self.blob_file_config = self.getBlobFiles(self.args['cnn_model'])
+            print(self.blob_file)
 
         self.blob_file2 = ""
         self.blob_file_config2 = ""

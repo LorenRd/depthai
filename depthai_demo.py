@@ -81,6 +81,12 @@ class DepthAI:
         print('Available streams: ' + str(self.device.get_available_streams()))
 
         # create the pipeline, here is the first connection with the device
+        print('================================================')
+        print('================================================')
+        for k, v in config.items():
+            print(k, v)
+        print('================================================')
+        print('================================================')
         p = self.device.create_pipeline(config=config)
 
         if p is None:

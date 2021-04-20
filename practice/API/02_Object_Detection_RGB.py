@@ -27,6 +27,8 @@ if pipeline is None:
     raise RuntimeError('Pipeline creation failed!')
     
 detections = []
+
+counter = 0
     
 while True:
     # Retrieve NN packets and data packets from the device.
@@ -44,6 +46,13 @@ while True:
             camera = meta.getCameraName()
             window_name = 'previewout-' + camera                  
             data = packet.getData()
+
+            if counter == 0:
+                print('||||||||||||||||||||||')
+                print(data.shape)
+                print('||||||||||||||||||||||')
+                counter += 1
+                
             # change shape (3, 300, 300) -> (300, 300, 3)            
             data0 = data[0, :, :]            
             data1 = data[1, :, :]            
