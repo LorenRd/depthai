@@ -9,7 +9,7 @@ print('depthai module: ', depthai.__file__)
 
 
 MODEL_DIR = './blobs'
-DETECTION_MODEL = 'person-vehicle-bike-detection-crossroad-1016'
+DETECTION_MODEL = 'person-vehicle-bike-detection-crossroad-1016_8shave'
 EMBEDDING_MODEL = 'person-reidentification-retail-0031_openvino_2020.1_4shave'
 
 
@@ -30,12 +30,12 @@ def create_pipeline():
     
     print("Creating pipeline...")
     pipeline = depthai.Pipeline()
-    pipeline.setOpenVINOVersion(version=depthai.OpenVINO.Version.VERSION_2020_1)
+    pipeline.setOpenVINOVersion(version=depthai.OpenVINO.Version.VERSION_2020_2)
 
     # ColorCamera
     print("Creating Color Camera...")
     cam = pipeline.createColorCamera()
-    cam.setPreviewSize(544, 320)
+    cam.setPreviewSize(512, 512)
     cam.setResolution(depthai.ColorCameraProperties.SensorResolution.THE_1080_P)
     cam.setInterleaved(False)
     cam.setBoardSocket(depthai.CameraBoardSocket.RGB)
@@ -51,9 +51,9 @@ def create_pipeline():
     # NeuralNetwork
     print("Creating Detection Neural Network...")
     detection_nn = pipeline.createMobileNetDetectionNetwork()
-    detection_nn.setBlobPath(str(Path("models/person-detection-retail-0013_openvino_2020.1_4shave.blob").resolve().absolute()))
+    detection_nn.setBlobPath(os.path.join(MODEL_DIR, DETECTION_MODEL + '.blob'))
     # Confidence
-    detection_nn.setConfidenceThreshold(0.7)
+    detection_nn.setConfidenceThreshold(0.5)
     # Increase threads for detection
     detection_nn.setNumInferenceThreads(2)
     # Specify that network takes latest arriving frame in non-blocking manner
@@ -78,7 +78,7 @@ def create_pipeline():
     reid_in = pipeline.createXLinkIn()
     reid_in.setStreamName("reid_in")
     reid_nn = pipeline.createNeuralNetwork()
-    reid_nn.setBlobPath(str(Path("models/person-reidentification-retail-0031_openvino_2020.1_4shave.blob").resolve().absolute()))
+    reid_nn.setBlobPath(os.path.join(MODEL_DIR, EMBEDDING_MODEL + '.blob'))
     
     # Decrease threads for reidentification
     reid_nn.setNumInferenceThreads(1)

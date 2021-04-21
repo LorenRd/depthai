@@ -24,7 +24,6 @@ config = {'streams': ['previewout', 'metaout'],
             'cmx_slices': 14,
             'NN_engines': 1,
         },
-        'ot': {'max_tracklets': 20, 'confidence_threshold': 0.5},
 }
 
 pipeline = device.create_pipeline(config=config)
@@ -52,7 +51,7 @@ while True:
             window_name = 'previewout-' + camera                  
             data = packet.getData()
 
-            # change shape (3, 300, 300) -> (300, 300, 3)
+            # change shape (3, 512, 512) -> (512, 512, 3)
             data0 = data[0, :, :]            
             data1 = data[1, :, :]            
             data2 = data[2, :, :]           
