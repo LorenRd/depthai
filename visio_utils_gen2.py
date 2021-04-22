@@ -26,27 +26,23 @@ def to_planar(arr: np.ndarray, shape: tuple) -> np.ndarray:
     return resized.transpose(2, 0, 1)
 
 
-def create_pipeline():
+def create_pipeline(args):
     
     print("Creating pipeline...")
     pipeline = depthai.Pipeline()
     pipeline.setOpenVINOVersion(version=depthai.OpenVINO.Version.VERSION_2020_2)
 
-    # ColorCamera
-    print("Creating Color Camera...")
-    cam = pipeline.createColorCamera()
-    cam.setPreviewSize(512, 512)
-    cam.setResolution(depthai.ColorCameraProperties.SensorResolution.THE_1080_P)
-    cam.setInterleaved(False)
-    cam.setBoardSocket(depthai.CameraBoardSocket.RGB)
-    cam_xout = pipeline.createXLinkOut()
-    cam_xout.setStreamName("cam_out")
-    # Link video output to host for higher resolution
-    # if hq:
-    #     cam.video.link(cam_xout.input)
-    # else:
-    #     cam.preview.link(cam_xout.input)
-    cam.preview.link(cam_xout.input)
+    if args.video is None:
+        # ColorCamera
+        print("Creating Color Camera...")
+        cam = pipeline.createColorCamera()
+        cam.setPreviewSize(512, 512)
+        cam.setResolution(depthai.ColorCameraProperties.SensorResolution.THE_1080_P)
+        cam.setInterleaved(False)
+        cam.setBoardSocket(depthai.CameraBoardSocket.RGB)
+        cam_xout = pipeline.createXLinkOut()
+        cam_xout.setStreamName("cam_out")
+        cam.preview.link(cam_xout.input)
 
     # NeuralNetwork
     print("Creating Detection Neural Network...")
@@ -67,8 +63,13 @@ def create_pipeline():
     detection_nn_passthrough.setStreamName("detection_passthrough")
     detection_nn_passthrough.setMetadataOnly(True)
 
-    print('linked cam.preview to detection_nn.input')
-    cam.preview.link(detection_nn.input)
+    if args.video is None:
+        print('linked cam.preview to detection_nn.input')
+        cam.preview.link(detection_nn.input)
+    else:
+        detection_in = pipeline.createXLinkIn()
+        detection_in.setStreamName("detection_in")
+        detection_in.out.link(detection_nn.input)
 
     detection_nn.out.link(detection_nn_xout.input)
     detection_nn.passthrough.link(detection_nn_passthrough.input)

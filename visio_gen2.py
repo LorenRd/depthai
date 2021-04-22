@@ -1,23 +1,19 @@
 import argparse
-import time
-import queue
 import signal
-import threading
 
-import numpy as np
-import cv2
-
-import depthai
-print('depthai module: ', depthai.__file__)
-
-from visio_utils_gen2 import *
 from visio_modules_gen2 import Main
 
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug', action="store_true", help="Prevent debug output")
+    parser.add_argument('-vid', '--video', type=str, help="Path to video file to be used for inference (conflicts with -cam)")
+    parser.add_argument('-w', '--width', default=448, type=int, help="Visualization width. Height is calculated automatically from aspect ratio")
+    args = parser.parse_args()
+
     # Create the application
-    app = Main()
+    app = Main(args)
 
     # Register a graceful CTRL+C shutdown
     def signal_handler(sig, frame):
@@ -27,5 +23,6 @@ if __name__ == "__main__":
 
     # Run the application
     app.run()
+
     # Print latest NN FPS
     print('FPS: ', app.nn_fps)

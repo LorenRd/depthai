@@ -1,6 +1,5 @@
 import time
 import queue
-import signal
 import threading
 
 import numpy as np
@@ -9,24 +8,35 @@ import cv2
 import depthai
 print('depthai module: ', depthai.__file__)
 
-from visio_utils_gen2 import *
+from visio_utils_gen2 import cos_dist, frame_norm, to_planar, create_pipeline
 
 
 class Main:
 
     FRAMERATE = 30.0
     
-    def __init__(self):
+    def __init__(self, args):
 
         self.running = True
 
         print("framerate: ", self.FRAMERATE)
 
+        self.args = args
         self.frame_queue = queue.Queue()
         self.visualization_queue = queue.Queue(maxsize=4)
         self.nn_fps = 0
 
-    def is_running(self): return True
+        if self.args.video is not None:
+            self.cap = cv2.VideoCapture(args.video)
+            self.FRAMERATE = self.cap.get(cv2.CAP_PROP_FPS)
+
+    def is_running(self):
+        if self.running:
+            if self.args.video is None:
+                return True
+            else:
+                return self.cap.isOpened()
+        return False
 
     def inference_task(self):
 
@@ -104,23 +114,23 @@ class Main:
                         results_path[result_id] = []
                         next_id += 1
 
-                    if DEBUG:
-                        for frame in frames:
-                            cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (10, 245, 10), 2)
-                            x = (bbox[0] + bbox[2]) // 2
-                            y = (bbox[1] + bbox[3]) // 2
-                            results_path[result_id].append([x, y])
-                            cv2.putText(frame, str(result_id), (x, y), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (255, 255, 255))
-                            if len(results_path[result_id]) > 1:
-                                cv2.polylines(frame, [np.array(results_path[result_id], dtype=np.int32)], False, (255, 0, 0), 2)
-                    else:
-                        print(f"Saw id: {result_id}")
+                    # if self.args.debug:
+                    for frame in frames:
+                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (10, 245, 10), 2)
+                        x = (bbox[0] + bbox[2]) // 2
+                        y = (bbox[1] + bbox[3]) // 2
+                        results_path[result_id].append([x, y])
+                        cv2.putText(frame, str(result_id), (x, y), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (255, 255, 255))
+                        if len(results_path[result_id]) > 1:
+                            cv2.polylines(frame, [np.array(results_path[result_id], dtype=np.int32)], False, (255, 0, 0), 2)
+                    # else:
+                    #     print(f"Saw id: {result_id}")
 
                 # Send of to visualization thread
                 for frame in frames:
                     # put nn_fps
-                    if DEBUG:
-                        cv2.putText(frame, 'NN FPS: '+str(self.nn_fps), (5, 40), cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 0, 0), 2)
+                    # if self.args.debug:
+                    cv2.putText(frame, 'NN FPS: '+str(self.nn_fps), (5, 40), cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 0, 0), 2)
 
                     if self.visualization_queue.full():
                         self.visualization_queue.get_nowait()
@@ -141,13 +151,37 @@ class Main:
 
     def input_task(self):
 
+        seq_num = 0
+
         while self.is_running():
-            # Send images to next stage
-            try:
-                frame = self.device.getOutputQueue('cam_out').get()
-                self.frame_queue.put(frame)
-            except RuntimeError:
-                continue
+
+            if self.args.video is None:
+                # Send images to next stage
+                try:
+                    frame = self.device.getOutputQueue('cam_out').get()
+                    self.frame_queue.put(frame)
+                except RuntimeError:
+                    continue
+
+            else:
+                # Get frame from video capture
+                read_correctly, vid_frame = self.cap.read()
+                if not read_correctly:
+                    break
+
+                # Send to NN and to inference thread
+                frame_nn = depthai.ImgFrame()
+                frame_nn.setSequenceNum(seq_num)
+                frame_nn.setWidth(512)
+                frame_nn.setHeight(512)
+                frame_nn.setData(to_planar(vid_frame, (512, 512)))
+                self.device.getInputQueue("detection_in").send(frame_nn)
+                self.frame_queue.put(frame_nn)                
+
+                seq_num = seq_num + 1
+
+                # Sleep at video framerate
+                time.sleep(1.0 / self.FRAMERATE)
             
         # Stop execution after input task doesn't have
         # any extra data anymore
@@ -164,7 +198,7 @@ class Main:
             if first or not self.visualization_queue.empty():
                 frame = self.visualization_queue.get()
                 aspect_ratio = frame.shape[1] / frame.shape[0]
-                cv2.imshow("frame", cv2.resize(frame, (int(WIDTH),  int(WIDTH / aspect_ratio))))
+                cv2.imshow("frame", cv2.resize(frame, (int(self.args.width),  int(self.args.width / aspect_ratio))))
                 first = False
 
             # sleep if required
@@ -182,7 +216,7 @@ class Main:
 
     def run(self):
 
-        pipeline = create_pipeline()
+        pipeline = create_pipeline(self.args)
 
         # Connect to the device
         with depthai.Device(pipeline) as device:
