@@ -36,7 +36,7 @@ def create_pipeline(args):
         # ColorCamera
         print("Creating Color Camera...")
         cam = pipeline.createColorCamera()
-        cam.setPreviewSize(512, 512)
+        cam.setPreviewSize(args.size, args.size)
         cam.setResolution(depthai.ColorCameraProperties.SensorResolution.THE_1080_P)
         cam.setInterleaved(False)
         cam.setBoardSocket(depthai.CameraBoardSocket.RGB)
@@ -82,7 +82,7 @@ def create_pipeline(args):
     reid_nn.setBlobPath(os.path.join(MODEL_DIR, EMBEDDING_MODEL + '.blob'))
     
     # Decrease threads for reidentification
-    reid_nn.setNumInferenceThreads(1)
+    reid_nn.setNumInferenceThreads(2)
     
     reid_nn_xout = pipeline.createXLinkOut()
     reid_nn_xout.setStreamName("reid_nn")

@@ -172,9 +172,9 @@ class Main:
                 # Send to NN and to inference thread
                 frame_nn = depthai.ImgFrame()
                 frame_nn.setSequenceNum(seq_num)
-                frame_nn.setWidth(512)
-                frame_nn.setHeight(512)
-                frame_nn.setData(to_planar(vid_frame, (512, 512)))
+                frame_nn.setWidth(self.args.size)
+                frame_nn.setHeight(self.args.size)
+                frame_nn.setData(to_planar(vid_frame, (self.args.size, self.args.size)))
                 self.device.getInputQueue("detection_in").send(frame_nn)
                 self.frame_queue.put(frame_nn)                
 
