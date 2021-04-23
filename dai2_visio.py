@@ -1,7 +1,7 @@
 import argparse
 import signal
 
-from visio_modules_gen2 import Main
+from dai2_visio_modules import Main
 
 
 if __name__ == "__main__":

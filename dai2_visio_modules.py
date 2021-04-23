@@ -8,12 +8,14 @@ import cv2
 import depthai
 print('depthai module: ', depthai.__file__)
 
-from visio_utils_gen2 import cos_dist, frame_norm, to_planar, create_pipeline
+from dai2_visio_utils import cos_dist, batch_cos_dist, frame_norm, to_planar, create_pipeline
 
 
 class Main:
 
     FRAMERATE = 30.0
+
+    track_label = ["person", "bicycle", "car", "motorbike", "bus", "truck"]
     
     def __init__(self, args):
 
@@ -43,8 +45,7 @@ class Main:
         # Queues
         detection_passthrough = self.device.getOutputQueue("detection_passthrough")
         detection_nn = self.device.getOutputQueue("detection_nn")
-
-        bboxes = []
+        
         results = {}
         results_path = {}
         next_id = 0
@@ -85,22 +86,39 @@ class Main:
                 infered_frame = frames[0]
 
                 # Send bboxes to be infered upon
+                # for det in inference.detections:
+                #     print(det.label)
+                #     # if det.label not in self.track_label:
+                #     #     continue
+                #     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
+                #     bbox = frame_norm(infered_frame, raw_bbox)
+                #     det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                #     nn_data = depthai.NNData()
+                #     nn_data.setLayer("data", to_planar(det_frame, (48, 96))[None, :])
+                #     self.device.getInputQueue("reid_in").send(nn_data)
+
+                # batch run
+                objects = []
                 for det in inference.detections:
                     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
                     bbox = frame_norm(infered_frame, raw_bbox)
                     det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                    nn_data = depthai.NNData()
-                    nn_data.setLayer("data", to_planar(det_frame, (48, 96)))
-                    self.device.getInputQueue("reid_in").send(nn_data)
+                    objects.append(to_planar(det_frame, (48, 96))[None, :])
 
+                if len(objects) > 0:
+                    objects = np.concatenate(objects, 0)
+                    nn_data = depthai.NNData()
+                    nn_data.setLayer("data", objects)
+                    self.device.getInputQueue("reid_in").send(nn_data)
+                    reid_results = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
                  
                 # Retrieve infered bboxes
-                for det in inference.detections:
-
+                for i, det in enumerate(inference.detections):
+                    
                     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
                     bbox = frame_norm(infered_frame, raw_bbox)
 
-                    reid_result = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
+                    # reid_result = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
 
                     for person_id in results:
                         dist = cos_dist(reid_result, results[person_id])

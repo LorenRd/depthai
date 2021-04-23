@@ -5,7 +5,7 @@ import numpy as np
 import time
 import argparse
 
-from visio_utils_gen2 import to_planar
+from dai2_visio_utils import to_planar
 
 
 IMG_SIZE = 300

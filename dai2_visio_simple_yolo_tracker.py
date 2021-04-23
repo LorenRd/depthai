@@ -5,16 +5,28 @@ import numpy as np
 import time
 import argparse
 
-from visio_utils_gen2 import to_planar
+from dai2_visio_utils import to_planar
 
 
-IMG_SIZE = 300
+IMG_SIZE = 416
 
 
-labelMap = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
-            "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+labelMap = [
+    "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
+    "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
+    "bird",           "cat",        "dog",           "horse",         "sheep",       "cow",           "elephant",
+    "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",    "handbag",       "tie",
+    "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball", "kite",          "baseball bat",
+    "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
+    "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
+    "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
+    "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
+    "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
+    "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
+    "teddy bear",     "hair drier", "toothbrush"
+]
 
-nnPath = './blobs/mobilenet-ssd_6_shaves.blob'
+nnPath = './blobs/tiny-yolo-v4_openvino_2021.2_6shave.blob'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('video', type=str)
@@ -27,24 +39,24 @@ args = parser.parse_args()
 pipeline = dai.Pipeline()
 
 # colorCam = pipeline.createColorCamera()
-detectionNetwork = pipeline.createMobileNetDetectionNetwork()
-objectTracker = pipeline.createObjectTracker()
-trackerOut = pipeline.createXLinkOut()
-
-xlinkOut = pipeline.createXLinkOut()
-
-xlinkOut.setStreamName("preview")
-trackerOut.setStreamName("tracklets")
-
 # colorCam.setPreviewSize(300, 300)
 # colorCam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
 # colorCam.setInterleaved(False)
 # colorCam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
 # colorCam.setFps(40)
 
+
 # setting node configs
-detectionNetwork.setBlobPath(nnPath)
+detectionNetwork = pipeline.createYoloDetectionNetwork()
 detectionNetwork.setConfidenceThreshold(0.5)
+detectionNetwork.setNumClasses(80)
+detectionNetwork.setCoordinateSize(4)
+detectionNetwork.setAnchors(np.array([10, 14, 23, 27, 37, 58, 81, 82, 135, 169, 344, 319]))
+detectionNetwork.setAnchorMasks({"side26": np.array([1, 2, 3]), "side13": np.array([3, 4, 5])})
+detectionNetwork.setIouThreshold(0.5)
+
+detectionNetwork.setBlobPath(nnPath)
+detectionNetwork.setNumInferenceThreads(2)
 detectionNetwork.input.setBlocking(False)
 
 # Link plugins CAM . NN . XLINK
@@ -53,10 +65,9 @@ video_in = pipeline.createXLinkIn()
 video_in.setStreamName("video_in")
 video_in.out.link(detectionNetwork.input)
 
-objectTracker.passthroughTrackerFrame.link(xlinkOut.input)
 
-
-objectTracker.setDetectionLabelsToTrack([2, 6, 7, 14])  # track vehicle and bicycle
+objectTracker = pipeline.createObjectTracker()
+objectTracker.setDetectionLabelsToTrack([0, 1, 2, 3, 5, 7])  # track vehicle and bicycle
 # possible tracking types: ZERO_TERM_COLOR_HISTOGRAM, ZERO_TERM_IMAGELESS
 objectTracker.setTrackerType(dai.TrackerType.ZERO_TERM_COLOR_HISTOGRAM)
 # take the smallest ID when new object is tracked, possible options: SMALLEST_ID, UNIQUE_ID
@@ -69,6 +80,8 @@ detectionNetwork.passthrough.link(objectTracker.inputTrackerFrame)
 
 detectionNetwork.passthrough.link(objectTracker.inputDetectionFrame)
 detectionNetwork.out.link(objectTracker.inputDetections)
+trackerOut = pipeline.createXLinkOut()
+trackerOut.setStreamName("tracklets")
 objectTracker.out.link(trackerOut.input)
 
 
@@ -80,7 +93,6 @@ with dai.Device(pipeline) as device:
 
     vid_cap = cv2.VideoCapture(args.video)
     framerate = vid_cap.get(cv2.CAP_PROP_FPS)
-    preview = device.getOutputQueue("preview", 4, False)
     tracklets = device.getOutputQueue("tracklets", 4, False)
 
     startTime = time.monotonic()
@@ -104,7 +116,6 @@ with dai.Device(pipeline) as device:
         device.getInputQueue("video_in").send(frame)
         seq_num += 1
 
-        # imgFrame = preview.get()
         track = tracklets.get()
 
         counter+=1
