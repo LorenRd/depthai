@@ -45,9 +45,10 @@ class Main:
         # Queues
         detection_passthrough = self.device.getOutputQueue("detection_passthrough")
         detection_nn = self.device.getOutputQueue("detection_nn")
-        
-        results = {}
-        results_path = {}
+
+        results = None
+        results_path = []
+        results_last_track = []
         next_id = 0
 
         # Match up frames and detections
@@ -85,18 +86,6 @@ class Main:
 
                 infered_frame = frames[0]
 
-                # Send bboxes to be infered upon
-                # for det in inference.detections:
-                #     print(det.label)
-                #     # if det.label not in self.track_label:
-                #     #     continue
-                #     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
-                #     bbox = frame_norm(infered_frame, raw_bbox)
-                #     det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                #     nn_data = depthai.NNData()
-                #     nn_data.setLayer("data", to_planar(det_frame, (48, 96))[None, :])
-                #     self.device.getInputQueue("reid_in").send(nn_data)
-
                 # batch run
                 objects = []
                 for det in inference.detections:
@@ -118,7 +107,10 @@ class Main:
                     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
                     bbox = frame_norm(infered_frame, raw_bbox)
 
-                    # reid_result = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
+                    if results is None:
+                        results = reid_results
+                    else:
+                        dists = batch_cos_dist(reid_results, results)
 
                     for person_id in results:
                         dist = cos_dist(reid_result, results[person_id])
