@@ -18,18 +18,20 @@ print('Depthai version installed: ', depthai.__version__)
 if platform.machine() not in ['armv6l', 'aarch64']:
     check_depthai_version()
 
+
+btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
 is_rpi = platform.machine().startswith('arm') or platform.machine().startswith('aarch64')
 global args, cnn_model2
 
 
 class DepthAI:
     global is_rpi
+    global btSerial
     process_watchdog_timeout = 10  # seconds
     nnet_packets = None
     data_packets = None
     runThread = True
     previous_frame_dict = {}
-    btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
 
     def reset_process_wd(self):
         global wd_cutoff
