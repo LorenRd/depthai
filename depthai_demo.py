@@ -393,12 +393,12 @@ class DepthAI:
                     #If the object is still tracked compare with the previous frame and check if is closer
                     if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 450:
                         print("ALERT ID {} IS CLOSE INMINENT IMPACT".format(id))
-                        btSerial.write("a")
+                        btSerial.write("a".encode())
                     elif id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 100:
                         print("Warning ID {} is getting closer".format(id))
-                        btSerial.write("w")
+                        btSerial.write("w".encode())
                     else:
-                        btSerial.write("s")
+                        btSerial.write("s".encode())
             previous_frame_dict = dict(current_frame_dict)
 
             t_curr = time()
