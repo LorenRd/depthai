@@ -7,6 +7,7 @@ from time import time, monotonic
 import cv2
 import numpy as np
 import depthai
+import serial
 from depthai_helpers.version_check import check_depthai_version
 from depthai_helpers.object_tracker_handler import show_tracklets
 from depthai_helpers.config_manager import DepthConfigManager
@@ -28,6 +29,7 @@ class DepthAI:
     data_packets = None
     runThread = True
     previous_frame_dict = {}
+    btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
 
     def reset_process_wd(self):
         global wd_cutoff
@@ -387,9 +389,14 @@ class DepthAI:
             for id in current_frame_dict:
                 if current_frame_dict[id]['status'] == 'TRACKED':
                     #If the object is still tracked compare with the previous frame and check if is closer
-                    if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']):
-                        print("ALERT ID {} IS CLOSER".format(id))
-            #If some vehicle is closer -> ALERT
+                    if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 450:
+                        print("ALERT ID {} IS CLOSE INMINENT IMPACT".format(id))
+                        btSerial.write("a")
+                    elif id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 100:
+                        print("Warning ID {} is getting closer".format(id))
+                        btSerial.write("w")
+                    else:
+                        btSerial.write("s")
             previous_frame_dict = dict(current_frame_dict)
 
             t_curr = time()
