@@ -204,19 +204,30 @@ class Main:
         # Stop execution after input task doesn't have
         # any extra data anymore
         self.running = False
+        self.cap.release()
 
     def visualization_task(self):
-        
+
         first = True
+
         while self.running:
 
             t1 = time.time()
 
             # Show frame if available
             if first or not self.visualization_queue.empty():
+
                 frame = self.visualization_queue.get()
                 aspect_ratio = frame.shape[1] / frame.shape[0]
-                cv2.imshow("frame", cv2.resize(frame, (int(self.args.width),  int(self.args.width / aspect_ratio))))
+                show_frame = cv2.resize(frame, (int(self.args.width),  int(self.args.width / aspect_ratio)))
+
+                if self.args.record is not None:
+                    if first:
+                        out = cv2.VideoWriter(self.args.record, cv2.VideoWriter_fourcc(*'MJPG'), 10, (int(self.args.width),  int(self.args.width / aspect_ratio)))
+                    
+                    out.write(show_frame)
+                
+                cv2.imshow("frame", show_frame)
                 first = False
 
             # sleep if required
@@ -230,7 +241,14 @@ class Main:
             # Exit
             if key == ord('q'):
                 self.running = False
+                
+                if self.args.record is not None:
+                    out.release()
+                
                 break
+
+        if self.args.record is not None:
+            out.release()
 
     def run(self):
 
