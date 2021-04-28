@@ -43,6 +43,7 @@ log_system_information.json
 *.h265
 *.mkv
 *.mp4
+*.avi
 *.blob*
 *.cmd
 *.mvcmd
