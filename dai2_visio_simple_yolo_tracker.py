@@ -71,7 +71,7 @@ objectTracker.setDetectionLabelsToTrack([0, 1, 2, 3, 5, 7])  # track vehicle and
 # possible tracking types: ZERO_TERM_COLOR_HISTOGRAM, ZERO_TERM_IMAGELESS
 objectTracker.setTrackerType(dai.TrackerType.ZERO_TERM_COLOR_HISTOGRAM)
 # take the smallest ID when new object is tracked, possible options: SMALLEST_ID, UNIQUE_ID
-objectTracker.setTrackerIdAssigmentPolicy(dai.TrackerIdAssigmentPolicy.SMALLEST_ID)
+objectTracker.setTrackerIdAssigmentPolicy(dai.TrackerIdAssigmentPolicy.UNIQUE_ID)
 
 # if fullFrameTracking:
 #     colorCam.video.link(objectTracker.inputTrackerFrame)
