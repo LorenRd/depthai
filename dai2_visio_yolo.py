@@ -7,11 +7,9 @@ import argparse
 
 from dai2_visio_utils import to_planar
 
-import serial
-btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
-is_rpi = platform.machine().startswith('arm') or platform.machine().startswith('aarch64')
 
-
+# --------------------------------------------------------------------------
+# Basic setup
 IMG_SIZE = 416
 
 
@@ -35,13 +33,28 @@ nnPath = './blobs/tiny-yolo-v4_openvino_2021.2_6shave.blob'
 parser = argparse.ArgumentParser()
 parser.add_argument('video', type=str)
 parser.add_argument('-r', '--record', type=str, help="Path to video file to be used for recorded video.")
+parser.add_argument('-bt', '--bluetooth', action="store_true", help="Enable bluetooth.")
 
 args = parser.parse_args()
+
+
+# --------------------------------------------------------------------------
+# create video recorder
+if args.record is not None:
+    writer = cv2.VideoWriter(args.record, cv2.VideoWriter_fourcc(*'MJPG'), 10, (IMG_SIZE,  IMG_SIZE))
+
+
+# setup bluetooth stuff
+if args.bluetooth is True:
+    import serial
+    btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
+    is_rpi = platform.machine().startswith('arm') or platform.machine().startswith('aarch64')
 
 # full frame disabled for the time being. Need to figure this out as it may improve tracking performance.
 # fullFrameTracking = args.full_frame
 
-# Start defining a pipeline
+# --------------------------------------------------------------------------
+# Pipeline definition
 pipeline = dai.Pipeline()
 
 # setting node configs
@@ -83,12 +96,8 @@ trackerOut.setStreamName("tracklets")
 objectTracker.out.link(trackerOut.input)
 
 
-# create video recorder
-if self.args.record is not None:
-    writer = cv2.VideoWriter(self.args.record, cv2.VideoWriter_fourcc(*'MJPG'), 10, (IMG_SIZE,  IMG_SIZE))
-
-
-# Pipeline defined, now the device is connected to
+# --------------------------------------------------------------------------
+# main loop
 with dai.Device(pipeline) as device:
 
     # Start the pipeline
@@ -129,7 +138,7 @@ with dai.Device(pipeline) as device:
             startTime = current_time
 
         color = (255, 0, 0)
-        frame = frame.getCvFrame()
+        frame = imgFrame.getCvFrame()
         trackletsData = track.tracklets
 
         for t in trackletsData:
@@ -144,19 +153,20 @@ with dai.Device(pipeline) as device:
             y2 = int(roi.bottomRight().y)
 
             # bluetooth interfacing
-            area = (x2 - x1) * (y2 - y1)
-            if t.status == dai.Tracklet.TrackingStatus.TRACKED:
-                #If the object is still tracked compare with the previous frame and check if is closer
-                #if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 450:
-                if area > 10000:
-                    print("ALERT ID {} IS CLOSE INMINENT IMPACT".format(t.id))
-                    btSerial.write("a".encode())
-                #elif id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 100:
-                elif area > 8000:
-                    print("Warning ID {} is getting closer".format(t.id))
-                    btSerial.write("w".encode())
-                else:
-                    btSerial.write("s".encode())
+            if args.bluetooth is True:
+                area = (x2 - x1) * (y2 - y1)
+                if t.status == dai.Tracklet.TrackingStatus.TRACKED:
+                    #If the object is still tracked compare with the previous frame and check if is closer
+                    #if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 450:
+                    if area > 10000:
+                        print("ALERT ID {} IS CLOSE INMINENT IMPACT".format(t.id))
+                        btSerial.write("a".encode())
+                    #elif id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 100:
+                    elif area > 8000:
+                        print("Warning ID {} is getting closer".format(t.id))
+                        btSerial.write("w".encode())
+                    else:
+                        btSerial.write("s".encode())
 
             try:
                 label = labelMap[t.label]
@@ -174,11 +184,12 @@ with dai.Device(pipeline) as device:
         cv2.imshow("tracker", frame)
 
         # write record frame
-        if self.args.record is not None:
+        if args.record is not None:
             writer.write(frame)
 
         if cv2.waitKey(1) == ord('q'):
             # close video recorder
-            writer.release()
+            if args.record is not None:
+                writer.release()
             vid_cap.release()
             break
