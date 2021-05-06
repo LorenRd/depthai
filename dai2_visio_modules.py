@@ -10,10 +10,23 @@ print('depthai module: ', depthai.__file__)
 
 from dai2_visio_utils import cos_dist, batch_cos_dist, frame_norm, to_planar, create_pipeline
 
+from collections import deque
+
+from deep_sort import preprocessing
+from deep_sort import nn_matching
+from deep_sort.detection import Detection
+from deep_sort.tracker import Tracker
+
+
+np.random.seed(100)
+
 
 class Main:
 
     FRAMERATE = 30.0
+    COSINE_THRESHOLD = 0.5
+    NMS_MAX_OVERLAP = 0.3
+    COLORS = np.random.randint(0, 255, size=(200, 3), dtype="uint8")
 
     track_label = ["person", "bicycle", "car", "motorbike", "bus", "truck"]
     
@@ -32,6 +45,11 @@ class Main:
             self.cap = cv2.VideoCapture(args.video)
             self.FRAMERATE = self.cap.get(cv2.CAP_PROP_FPS)
 
+        metric = nn_matching.NearestNeighborDistanceMetric("cosine", self.COSINE_THRESHOLD, None)
+        self.tracker = Tracker(metric)
+
+        self.pts = [deque(maxlen=30) for _ in range(9999)]
+
     def is_running(self):
         if self.running:
             if self.args.video is None:
@@ -45,11 +63,6 @@ class Main:
         # Queues
         detection_passthrough = self.device.getOutputQueue("detection_passthrough")
         detection_nn = self.device.getOutputQueue("detection_nn")
-
-        results = None
-        results_path = []
-        results_last_track = []
-        next_id = 0
 
         # Match up frames and detections
         try:
@@ -87,67 +100,83 @@ class Main:
                 infered_frame = frames[0]
 
                 # Send bboxes to be infered upon
-                for det in inference.detections:
-                    print(det.label)
-                    # if det.label not in self.track_label:
-                    #     continue
-                    raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
-                    bbox = frame_norm(infered_frame, raw_bbox)
-                    det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                    nn_data = depthai.NNData()
-                    nn_data.setLayer("data", to_planar(det_frame, (48, 96))[None, :])
-                    self.device.getInputQueue("reid_in").send(nn_data)
-
                 # batch run
-                # objects = []
-                # for det in inference.detections:
-                #     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
-                #     bbox = frame_norm(infered_frame, raw_bbox)
-                #     det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                #     objects.append(to_planar(det_frame, (48, 96))[None, :])
-
-                # if len(objects) > 0:
-                #     objects = np.concatenate(objects, 0)
-                #     nn_data = depthai.NNData()
-                #     nn_data.setLayer("data", objects)
-                #     self.device.getInputQueue("reid_in").send(nn_data)
-                #     reid_results = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
-                 
-                # Retrieve infered bboxes
-                for i, det in enumerate(inference.detections):
-                    
+                objects = []
+                boxes = []
+                labels = []
+                for det in inference.detections:
                     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
                     bbox = frame_norm(infered_frame, raw_bbox)
+                    boxes.append(bbox)
+                    labels.append(det.label)
+                    det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                    objects.append(to_planar(det_frame, (48, 96))[None, :])
 
-                    if results is None:
-                        results = reid_results
-                    else:
-                        dists = batch_cos_dist(reid_results, results)
-                    reid_result = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
+                if len(objects) > 0:
+                    objects = np.concatenate(objects, 0)
+                    print(objects.shape)
+                    nn_data = depthai.NNData()
+                    nn_data.setLayer("data", objects)
+                    self.device.getInputQueue("reid_in").send(nn_data)
+                    features = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
+                    print(len(features))
+                    print(type(features[0]))
+                    print(features)
+                    detections = [Detection(bbox, 1.0, feature) for bbox, feature in zip(boxes, features)]
 
-                    for person_id in results:
-                        dist = cos_dist(reid_result, results[person_id])
-                        if dist > 0.7:
-                            result_id = person_id
-                            results[person_id] = reid_result
-                            break
-                    else:
-                        result_id = next_id
-                        results[result_id] = reid_result
-                        results_path[result_id] = []
-                        next_id += 1
+                    # Run non-maxima suppression.
+                    boxes = np.array([d.tlwh for d in detections])
+                    scores = np.array([d.confidence for d in detections])
+                    indices = preprocessing.non_max_suppression(boxes, self.NMS_MAX_OVERLAP, scores)
+                    detections = [detections[i] for i in indices]
 
-                    # if self.args.debug:
+                    # Call the tracker
+                    self.tracker.predict()
+                    self.tracker.update(detections)
+
+                # deepsort visualisation
+                i = int(0)
+                indexIDs = []
+                boxes = []
+
+                for det in detections:
+                    
+                    bbox = det.to_tlbr()
+
                     for frame in frames:
-                        cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (10, 245, 10), 2)
-                        x = (bbox[0] + bbox[2]) // 2
-                        y = (bbox[1] + bbox[3]) // 2
-                        results_path[result_id].append([x, y])
-                        cv2.putText(frame, str(result_id), (x, y), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (255, 255, 255))
-                        if len(results_path[result_id]) > 1:
-                            cv2.polylines(frame, [np.array(results_path[result_id], dtype=np.int32)], False, (255, 0, 0), 2)
-                    # else:
-                    #     print(f"Saw id: {result_id}")
+                        cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255,255,255), 2)
+
+                for track in self.tracker.tracks:
+                    
+                    if not track.is_confirmed() or track.time_since_update > 1:
+                        continue
+                    
+                    indexIDs.append(int(track.track_id))
+                    bbox = track.to_tlbr()
+                    color = [int(c) for c in self.COLORS[indexIDs[i] % len(self.COLORS)]]
+
+                    for frame in frames:
+                        cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(color), 3)
+                        cv2.putText(frame, str(track.track_id), (int(bbox[0]), int(bbox[1] -50)),0, 5e-3 * 150, (color),2)
+                    
+                    i += 1
+                    
+                    center = (int(((bbox[0])+(bbox[2]))/2), int(((bbox[1])+(bbox[3]))/2))
+                    
+                    self.pts[track.track_id].append(center)
+                    thickness = 5
+
+                    # center point
+                    for frame in frames:
+                        cv2.circle(frame,  (center), 1, color, thickness)
+
+                    # draw motion path
+                    for j in range(1, len(self.pts[track.track_id])):
+                        if self.pts[track.track_id][j - 1] is None or self.pts[track.track_id][j] is None:
+                            continue
+                        thickness = int(np.sqrt(64 / float(j + 1)) * 2)
+                        for frame in frames:
+                            cv2.line(frame, (self.pts[track.track_id][j-1]), (self.pts[track.track_id][j]),(color), thickness)
 
                 # Send of to visualization thread
                 for frame in frames:
