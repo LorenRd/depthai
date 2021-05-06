@@ -24,7 +24,7 @@ np.random.seed(100)
 class Main:
 
     FRAMERATE = 30.0
-    COSINE_THRESHOLD = 0.5
+    COSINE_THRESHOLD = 0.3
     NMS_MAX_OVERLAP = 0.3
     COLORS = np.random.randint(0, 255, size=(200, 3), dtype="uint8")
 
@@ -101,27 +101,26 @@ class Main:
 
                 # Send bboxes to be infered upon
                 # batch run
-                objects = []
+                
                 boxes = []
                 labels = []
+
                 for det in inference.detections:
                     raw_bbox = [det.xmin, det.ymin, det.xmax, det.ymax]
                     bbox = frame_norm(infered_frame, raw_bbox)
                     boxes.append(bbox)
                     labels.append(det.label)
                     det_frame = infered_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-                    objects.append(to_planar(det_frame, (48, 96))[None, :])
-
-                if len(objects) > 0:
-                    objects = np.concatenate(objects, 0)
-                    print(objects.shape)
+                    
                     nn_data = depthai.NNData()
-                    nn_data.setLayer("data", objects)
+                    nn_data.setLayer("data", to_planar(det_frame, (48, 96)))
                     self.device.getInputQueue("reid_in").send(nn_data)
-                    features = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
-                    print(len(features))
-                    print(type(features[0]))
-                    print(features)
+
+                features = []
+                for det in inference.detections:
+                    features.append(self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16())
+
+                if len(features) > 0:
                     detections = [Detection(bbox, 1.0, feature) for bbox, feature in zip(boxes, features)]
 
                     # Run non-maxima suppression.
