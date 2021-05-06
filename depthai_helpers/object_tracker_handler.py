@@ -7,7 +7,7 @@ def show_tracklets(tracklets, frame, labels):
 
     # iterate through pre-saved entries & draw rectangle & text on image:
     tracklet_nr = tracklets.getNrTracklets()
-
+    current_frame_dict = {}
     for i in range(tracklet_nr):
         tracklet        = tracklets.getTracklet(i)
         left_coord      = tracklet.getLeftCoord()
@@ -20,7 +20,7 @@ def show_tracklets(tracklets, frame, labels):
 
         # print("left: {0} top: {1} right: {2}, bottom: {3}, id: {4}, label: {5}, status: {6} "\
         #     .format(left_coord, top_coord, right_coord, bottom_coord, tracklet_id, tracklet_label, tracklet_status))
-        
+
         pt1 = left_coord,  top_coord
         pt2 = right_coord,  bottom_coord
         color = (255, 0, 0) # bgr
@@ -38,6 +38,19 @@ def show_tracklets(tracklets, frame, labels):
         pt_t2 = x1, y1 - 20
         cv2.putText(frame, tracklet_status, pt_t2, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
+        current_frame_dict[str(tracklet_id)] = {'status': tracklet_status}
+        current_frame_dict[str(tracklet_id)]['area'] = ((right_coord - left_coord) * (bottom_coord - top_coord))
+        '''
+        id1: {
+            status
+            distance
+        },
+        id2: {
+            status
+            distance
+        },
+        ...
+        '''
 
         
-    return frame
+    return frame, current_frame_dict

@@ -7,6 +7,7 @@ from time import time, monotonic
 import cv2
 import numpy as np
 import depthai
+import serial
 from depthai_helpers.version_check import check_depthai_version
 from depthai_helpers.object_tracker_handler import show_tracklets
 from depthai_helpers.config_manager import DepthConfigManager
@@ -17,16 +18,20 @@ print('Depthai version installed: ', depthai.__version__)
 if platform.machine() not in ['armv6l', 'aarch64']:
     check_depthai_version()
 
+
+btSerial = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=0.5)
 is_rpi = platform.machine().startswith('arm') or platform.machine().startswith('aarch64')
 global args, cnn_model2
 
 
 class DepthAI:
     global is_rpi
+    global btSerial
     process_watchdog_timeout = 10  # seconds
     nnet_packets = None
     data_packets = None
     runThread = True
+    previous_frame_dict = {}
 
     def reset_process_wd(self):
         global wd_cutoff
@@ -230,6 +235,7 @@ class DepthAI:
 
         ops = 0
         prevTime = time()
+
         if args['verbose']: print_packet_info_header()
         while self.runThread:
             # retreive data from the device
@@ -242,6 +248,8 @@ class DepthAI:
             #     print('OPS: ', ops)
             #     ops = 0
             #     prevTime = time()
+
+            current_frame_dict = {}
 
             packets_len = len(self.nnet_packets) + len(self.data_packets)
             if packets_len != 0:
@@ -261,6 +269,7 @@ class DepthAI:
                     camera = meta.getCameraName()
                 nnet_prev["nnet_source"][camera] = nnet_packet
                 nnet_prev["entries_prev"][camera] = decode_nn(nnet_packet, config=config, NN_json=NN_json)
+                #print(nnet_prev["entries_prev"][camera])
                 frame_count['metaout'] += 1
                 frame_count['nn'][camera] += 1
 
@@ -290,7 +299,8 @@ class DepthAI:
                     if nnet_prev["entries_prev"][camera] is not None:
                         frame = show_nn(nnet_prev["entries_prev"][camera], frame, NN_json=NN_json, config=config)
                         if enable_object_tracker and tracklets is not None:
-                            frame = show_tracklets(tracklets, frame, labels)
+                            frame, current_frame_dict = show_tracklets(tracklets, frame, labels)
+                            #print(current_frame_dict)
                     cv2.putText(frame, "fps: " + str(frame_count_prev[window_name]), (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
                     cv2.putText(frame, "NN fps: " + str(frame_count_prev['nn'][camera]), (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0))
                     cv2.imshow(window_name, frame)
@@ -381,8 +391,24 @@ class DepthAI:
                           ' DSS:' + '{:6.2f}'.format(dict_['sensors']['temperature']['upa1']))
                 elif packet.stream_name == 'object_tracker':
                     tracklets = packet.getObjectTracker()
-
                 frame_count[window_name] += 1
+
+            #TODO Compare the current frame dict with the previous id by id comparing distances
+            for id in current_frame_dict:
+                if current_frame_dict[id]['status'] == 'TRACKED':
+                    #If the object is still tracked compare with the previous frame and check if is closer
+                    #if id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 450:
+                    if current_frame_dict[id]['area'] > 10000:
+                        print("ALERT ID {} IS CLOSE INMINENT IMPACT".format(id))
+                        btSerial.write("a".encode())
+                    #elif id in previous_frame_dict and (previous_frame_dict[id]['area'] < current_frame_dict[id]['area']) and current_frame_dict[id]['area'] > 100:
+                    elif current_frame_dict[id]['area'] > 8000:
+                        print("Warning ID {} is getting closer".format(id))
+                        btSerial.write("w".encode())
+                    else:
+                        btSerial.write("s".encode())
+                    print(current_frame_dict[id]['area'])
+            previous_frame_dict = dict(current_frame_dict)
 
             t_curr = time()
             if t_start + 1.0 < t_curr:
