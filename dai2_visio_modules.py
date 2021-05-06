@@ -119,6 +119,8 @@ class Main:
                     bbox = frame_norm(infered_frame, raw_bbox)
 
                     reid_result = self.device.getOutputQueue("reid_nn").get().getFirstLayerFp16()
+                    print(len(reid_result))
+                    print(reid_result[0])
 
                     for person_id in results:
                         dist = cos_dist(reid_result, results[person_id])
